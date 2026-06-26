@@ -370,28 +370,40 @@ if btn_paipan:
     st.divider()
     st.subheader("详细信息")
 
-    col0, col1, col2, col3, col4 = st.columns([0.6, 1, 1, 1, 1])
-    with col0:
-        st.write("")
-        st.write("**天干**")
-        st.write("**地支**")
-        st.write("**藏干**")
-        st.write("**十神**")
-        st.write("**五行**")
-        st.write("**空亡**")
-    for i, title in enumerate(["年柱", "月柱", "日柱", "时柱"]):
-        col = [col1, col2, col3, col4][i]
-        with col:
-            st.write(f"**{title}**")
-            st.write(gans[i])
-            st.write(zhis[i])
-            cang = "/".join(CANG_GAN[zhis[i]])
-            st.write(cang)
-            st.write(shishen[i])
-            wx = GAN_WU_XING[gan_idx[i]] + ZHI_WU_XING[zhi_idx[i]]
-            st.write(wx)
-            kong = KONG_WANG.get(gans[i] + zhis[i], ["", ""])
-            st.write("/".join(kong) if kong[0] else "")
+      # 用HTML表格保证手机上也横排
+    html_table = """
+    <style>
+    .detail-table { width:100%; border-collapse:collapse; font-size:14px; }
+    .detail-table th, .detail-table td { text-align:center; padding:6px 4px; border:1px solid #ddd; }
+    .detail-table th { background-color:#f5f5f5; }
+    .label-col { background-color:#fafafa; font-weight:bold; }
+    </style>
+    <table class="detail-table">
+    <tr><th class="label-col"></th><th>年柱</th><th>月柱</th><th>日柱</th><th>时柱</th></tr>
+    """
+    
+    labels = ["天干", "地支", "藏干", "十神", "五行", "空亡"]
+    for j, label in enumerate(labels):
+        html_table += f"<tr><td class='label-col'>{label}</td>"
+        for i in range(4):
+            if label == "天干":
+                val = gans[i]
+            elif label == "地支":
+                val = zhis[i]
+            elif label == "藏干":
+                val = "/".join(CANG_GAN[zhis[i]])
+            elif label == "十神":
+                val = shishen[i]
+            elif label == "五行":
+                val = GAN_WU_XING[gan_idx[i]] + ZHI_WU_XING[zhi_idx[i]]
+            elif label == "空亡":
+                kong = KONG_WANG.get(gans[i] + zhis[i], ["", ""])
+                val = "/".join(kong) if kong[0] else ""
+            html_table += f"<td>{val}</td>"
+        html_table += "</tr>"
+    
+    html_table += "</table>"
+    st.markdown(html_table, unsafe_allow_html=True)
 
     st.divider()
     st.subheader("大运排盘")
