@@ -370,7 +370,7 @@ if btn_paipan:
     st.divider()
     st.subheader("详细信息")
 
-      # 用HTML表格保证手机上也横排
+    # 用HTML表格保证手机上也横排
     html_table = """
     <style>
     .detail-table { width:100%; border-collapse:collapse; font-size:14px; }
