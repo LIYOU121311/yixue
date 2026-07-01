@@ -190,7 +190,7 @@ def get_guan_qi(ri_gan, zhi):
         "甲": [3, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 3],
         "乙": [3, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 3],
         "丙": [1, 1, 3, 3, 1, 3, 3, 1.3, 1, 1, 0, 1],
-        "丁": [1, 1, 3, 3, 1, 3, 3, 1.3, 1, 1, 0.3, 1],
+        "丁": [3, 1, 3, 3, 1, 3, 3, 1.3, 1, 1, 0.3, 1],
         "戊": [1, 1, 1, 1, 1, 3, 3, 3, 1, 1, 0, 1],
         "己": [1, 1, 1, 1, 1, 3, 3, 3, 1, 1, 3, 1],
         "庚": [1, 0, 1, 1, 3, 1, 1, 1, 3, 3, 1, 1],
@@ -215,6 +215,7 @@ def is_tu(zhi):
 
 
 def check_tu_special(gan, zhi, same_column_gan=None):
+    """土的特殊性：返回"生助"、"克泄耗"或None（无特殊情况）"""
     if gan in ["戊", "己"] and is_zao_tu(zhi):
         return "生助"
     if gan in ["戊", "己"] and is_shi_tu(zhi):
@@ -241,7 +242,7 @@ def check_tu_special(gan, zhi, same_column_gan=None):
 
 
 def get_sheng_zhu_or_ke_xie(ri_gan_idx, target_gan_idx, target_zhi, same_column_gan=None):
-    target_gan = TIAN_GAN_CN[target_gan_idx]
+    """判断地支对日干是生助还是克泄耗"""
     ri_gan = TIAN_GAN_CN[ri_gan_idx]
     tu_result = check_tu_special(ri_gan, target_zhi, same_column_gan)
     if tu_result:
@@ -258,23 +259,67 @@ def get_sheng_zhu_or_ke_xie(ri_gan_idx, target_gan_idx, target_zhi, same_column_
         return "克泄耗"
 
 
-def check_you_li(gan_idx, zhi_idx, all_gans, all_zhis):
-    target_gan = TIAN_GAN_CN[gan_idx]
-    target_zhi = DI_ZHI_CN[zhi_idx]
-    zhi_wx = ZHI_WU_XING[zhi_idx]
-    gan_wx = GAN_WU_XING[gan_idx]
-    zhi_num = WU_XING_INDEX[zhi_wx]
-    gan_num = WU_XING_INDEX[gan_wx]
-    diff = (gan_num - zhi_num) % 5
-    if diff == 1 or diff == 0 or diff == 4:
-        tu_special = check_tu_special(target_gan, target_zhi, target_gan)
-        if tu_special == "生助" or tu_special is None:
+def is_sheng_zhu_wx(a_wx, b_wx):
+    """a 对 b 是否生助：同五行，或 a 生 b"""
+    if a_wx == b_wx:
+        return True
+    if (a_wx == "木" and b_wx == "火") or \
+       (a_wx == "火" and b_wx == "土") or \
+       (a_wx == "土" and b_wx == "金") or \
+       (a_wx == "金" and b_wx == "水") or \
+       (a_wx == "水" and b_wx == "木"):
+        return True
+    return False
+
+
+def step_ok(zhi_wx, gan_wx, gan_cn, zhi_cn):
+    """地支对天干是否生助：同五行或地生天，并查土的特殊性"""
+    tu = check_tu_special(gan_cn, zhi_cn, gan_cn)
+    if tu is not None:
+        return tu == "生助"
+    return is_sheng_zhu_wx(zhi_wx, gan_wx)
+
+
+def check_you_li(pos, all_gan_idx, all_zhi_idx, ri_gan_idx):
+    """16条路线判断月干/时干是否有生助"""
+    nian_gan = TIAN_GAN_CN[all_gan_idx[0]]
+    nian_zhi = DI_ZHI_CN[all_zhi_idx[0]]
+    yue_gan = TIAN_GAN_CN[all_gan_idx[1]]
+    yue_zhi = DI_ZHI_CN[all_zhi_idx[1]]
+    ri_gan = TIAN_GAN_CN[ri_gan_idx]
+    ri_zhi = DI_ZHI_CN[all_zhi_idx[2]]
+    shi_gan = TIAN_GAN_CN[all_gan_idx[3]]
+    shi_zhi = DI_ZHI_CN[all_zhi_idx[3]]
+
+    nian_gan_wx = GAN_WU_XING[all_gan_idx[0]]
+    nian_zhi_wx = ZHI_WU_XING[all_zhi_idx[0]]
+    yue_gan_wx = GAN_WU_XING[all_gan_idx[1]]
+    yue_zhi_wx = ZHI_WU_XING[all_zhi_idx[1]]
+    ri_gan_wx = GAN_WU_XING[ri_gan_idx]
+    ri_zhi_wx = ZHI_WU_XING[all_zhi_idx[2]]
+    shi_gan_wx = GAN_WU_XING[all_gan_idx[3]]
+    shi_zhi_wx = ZHI_WU_XING[all_zhi_idx[3]]
+
+    if pos == "月干":
+        if step_ok(nian_zhi_wx, nian_gan_wx, nian_gan, nian_zhi) and is_sheng_zhu_wx(nian_gan_wx, yue_gan_wx):
             return True
+        if step_ok(yue_zhi_wx, yue_gan_wx, yue_gan, yue_zhi):
+            return True
+        if step_ok(ri_zhi_wx, ri_gan_wx, ri_gan, ri_zhi) and is_sheng_zhu_wx(ri_gan_wx, yue_gan_wx):
+            return True
+        if step_ok(shi_zhi_wx, shi_gan_wx, shi_gan, shi_zhi) and is_sheng_zhu_wx(shi_gan_wx, ri_gan_wx) and is_sheng_zhu_wx(ri_gan_wx, yue_gan_wx):
+            return True
+        return False
     else:
-        tu_special = check_tu_special(target_gan, target_zhi, target_gan)
-        if tu_special != "生助":
-            return False
-    return True
+        if step_ok(nian_zhi_wx, nian_gan_wx, nian_gan, nian_zhi) and is_sheng_zhu_wx(nian_gan_wx, yue_gan_wx) and is_sheng_zhu_wx(yue_gan_wx, ri_gan_wx) and is_sheng_zhu_wx(ri_gan_wx, shi_gan_wx):
+            return True
+        if step_ok(yue_zhi_wx, yue_gan_wx, yue_gan, yue_zhi) and is_sheng_zhu_wx(yue_gan_wx, ri_gan_wx) and is_sheng_zhu_wx(ri_gan_wx, shi_gan_wx):
+            return True
+        if step_ok(ri_zhi_wx, ri_gan_wx, ri_gan, ri_zhi) and is_sheng_zhu_wx(ri_gan_wx, shi_gan_wx):
+            return True
+        if step_ok(shi_zhi_wx, shi_gan_wx, shi_gan, shi_zhi):
+            return True
+        return False
 
 
 def check_fan_duan(ri_gan, ri_zhi, yue_zhi, nian_zhi, yue_gan_idx, nian_gan_idx, ri_gan_idx, yue_zhi_kong):
@@ -372,60 +417,75 @@ def get_ge_ju(ri_gan_idx, ri_zhi, yue_gan_idx, yue_zhi, shi_gan_idx, shi_zhi, ni
         used_zhi = yue_zhi
     guan_qi = get_guan_qi(ri_gan, used_zhi)
 
+    # 日支对日干：用地支五行+土的特殊性判断
     ri_zhi_effect = get_sheng_zhu_or_ke_xie(ri_gan_idx, ri_gan_idx, ri_zhi)
-    yue_effect = get_sheng_zhu_or_ke_xie(ri_gan_idx, yue_gan_idx, yue_zhi)
-    shi_effect = get_sheng_zhu_or_ke_xie(ri_gan_idx, shi_gan_idx, shi_zhi)
+    # 月干对日干：用十神判断
+    yue_ss = get_shi_shen(ri_gan_idx, yue_gan_idx)
+    yue_effect = "生助" if yue_ss in ["正印", "偏印", "比肩", "劫财", "日主"] else "克泄耗"
+    # 时干对日干：用十神判断
+    shi_ss = get_shi_shen(ri_gan_idx, shi_gan_idx)
+    shi_effect = "生助" if shi_ss in ["正印", "偏印", "比肩", "劫财", "日主"] else "克泄耗"
 
-    yue_you_li = check_you_li(yue_gan_idx, DI_ZHI_CN.index(yue_zhi), all_gans, all_zhis)
-    shi_you_li = check_you_li(shi_gan_idx, DI_ZHI_CN.index(shi_zhi), all_gans, all_zhis)
+    _gan_idx = [nian_gan_idx, yue_gan_idx, ri_gan_idx, shi_gan_idx]
+    _zhi_idx = [DI_ZHI_CN.index(nian_zhi), DI_ZHI_CN.index(yue_zhi), DI_ZHI_CN.index(ri_zhi), DI_ZHI_CN.index(shi_zhi)]
+
+    yue_you_li = check_you_li("月干", _gan_idx, _zhi_idx, ri_gan_idx)
+    shi_you_li = check_you_li("时干", _gan_idx, _zhi_idx, ri_gan_idx)
     ri_you_li = True
 
-    sheng_zhu_count = 0
-    wu_li_count = 0
-
-    if ri_zhi_effect == "生助":
-        sheng_zhu_count += 1
-    else:
-        if not ri_you_li:
-            wu_li_count += 1
-
-    if yue_effect == "生助":
-        sheng_zhu_count += 1
-    else:
-        if not yue_you_li:
-            wu_li_count += 1
-
-    if shi_effect == "生助":
-        sheng_zhu_count += 1
-    else:
-        if not shi_you_li:
-            wu_li_count += 1
-
     if guan_qi == 3:
-        if wu_li_count == 3:
+        # 旺：克泄耗的任何一个或两个或都对日干克泄耗无力为从旺格，否则为身旺格。
+        ke_xie_you_wu_li = False
+        if ri_zhi_effect == "克泄耗" and not ri_you_li:
+            ke_xie_you_wu_li = True
+        if yue_effect == "克泄耗" and not yue_you_li:
+            ke_xie_you_wu_li = True
+        if shi_effect == "克泄耗" and not shi_you_li:
+            ke_xie_you_wu_li = True
+            
+        if ke_xie_you_wu_li:
             geju = "从旺格"
         else:
             geju = "身旺格"
+            
     elif guan_qi == 1:
-        if sheng_zhu_count == 0 and wu_li_count == 3:
+        # 弱：生助的任何一个或两个都对日干生助无力为从弱格，否则为身弱格。
+        sheng_you_wu_li = False
+        if ri_zhi_effect == "生助" and not ri_you_li:
+            sheng_you_wu_li = True
+        if yue_effect == "生助" and not yue_you_li:
+            sheng_you_wu_li = True
+        if shi_effect == "生助" and not shi_you_li:
+            sheng_you_wu_li = True
+
+        if sheng_you_wu_li:
             geju = "从弱格"
         else:
             geju = "身弱格"
+            
     elif guan_qi == 0:
         if ri_zhi_effect == "生助":
-            if yue_you_li or shi_you_li:
-                geju = "身旺格"
-            else:
+            if not yue_you_li and not shi_you_li:
                 geju = "从旺格"
-        else:
-            if yue_you_li or shi_you_li:
-                geju = "身弱格"
             else:
+                geju = "身旺格"
+        else:
+            if not yue_you_li and not shi_you_li:
                 geju = "从弱格"
+            else:
+                geju = "身弱格"
     else:
-        if sheng_zhu_count == 3:
+        # 10%/30%：有气但弱
+        sheng_count = 0
+        if ri_zhi_effect == "生助":
+            sheng_count += 1
+        if yue_effect == "生助":
+            sheng_count += 1
+        if shi_effect == "生助":
+            sheng_count += 1
+        if sheng_count == 3:
             geju = "从旺格"
-        elif sheng_zhu_count >= 2:
+        elif sheng_count >= 2:
             geju = "身旺格"
         else:
             geju = "身弱格"
@@ -443,13 +503,13 @@ def get_ge_ju(ri_gan_idx, ri_zhi, yue_gan_idx, yue_zhi, shi_gan_idx, shi_zhi, ni
 
 def get_yong_ji(geju):
     if geju == "从弱格":
-        return "克泄耗日干的字", "生助日干的字"
+        return "克泄耗日干的字（财、官、食伤）", "生助日干的字（印、比劫）"
     elif geju == "身弱格":
-        return "生助日干的字", "克泄耗日干的字"
+        return "生助日干的字（印、比劫）", "克泄耗日干的字（财、官、食伤）"
     elif geju == "身旺格":
-        return "克泄耗日干的字", "生助日干的字"
+        return "克泄耗日干的字（财、官、食伤）", "生助日干的字（印、比劫）"
     elif geju == "从旺格":
-        return "生助日干的字", "克泄耗日干的字"
+        return "生助日干的字（印、比劫）", "克泄耗日干的字（财、官、食伤）"
     return "", ""
 
 
@@ -642,29 +702,57 @@ if btn_paipan:
     geju = get_ge_ju(ri_gan_idx, zhis[2], yue_gan_idx, zhis[1], shi_gan_idx, zhis[3], zhis[0], nian_gan_idx, gans, zhis)
     yong_shen, ji_shen = get_yong_ji(geju)
 
-    # 判断每个天干和地支的用忌
+    # 判断用忌神：天干按十神，地支按五行生克+土的特殊性
     yong_words = []
     ji_words = []
     yong_gan_flags = []
     yong_zhi_flags = []
+
+    sheng_zhu_shi_shen = ["正印", "偏印", "比肩", "劫财"]
+
     for i in range(4):
-        g_wx_idx = WU_XING_INDEX[GAN_WU_XING[gan_idx[i]]]
-        r_wx_idx = WU_XING_INDEX[GAN_WU_XING[ri_gan_idx]]
-        diff_g = (g_wx_idx - r_wx_idx) % 5
-        if diff_g == 0 or diff_g == 4:
-            yong_gan_flags.append(True)
+        # 天干
+        ss = get_shi_shen(ri_gan_idx, gan_idx[i])
+        if ss == "日主":
+            g_effect = "生助"
+        else:
+            g_effect = "生助" if ss in sheng_zhu_shi_shen else "克泄耗"
+
+        is_yong = (g_effect == "生助") if yong_shen == "生助日干的字（印、比劫）" else (g_effect == "克泄耗")
+        yong_gan_flags.append(is_yong)
+        if is_yong:
             yong_words.append(gans[i])
         else:
-            yong_gan_flags.append(False)
             ji_words.append(gans[i])
 
-        z_effect = get_sheng_zhu_or_ke_xie(ri_gan_idx, gan_idx[i], zhis[i], same_column_gan=gans[i])
-        if z_effect == "生助":
-            yong_zhi_flags.append(True)
-            yong_words.append(zhis[i])
+        # 地支
+        zhi_cn = zhis[i]
+        ri_gan_cn = TIAN_GAN_CN[ri_gan_idx]
+        zhi_wx = ZHI_WU_XING[DI_ZHI_CN.index(zhi_cn)]
+        ri_gan_wx = GAN_WU_XING[ri_gan_idx]
+        is_yue_ling = (i == 1)
+
+        # 1. 查土的特殊性（包含同柱天干判断）
+        tu_result = check_tu_special(ri_gan_cn, zhi_cn, same_column_gan=gans[i])
+        if tu_result is not None:
+            z_effect = tu_result
+        # 2. 月令灌气规则：燥土助火，湿土助水
+        elif is_yue_ling and ri_gan_wx == "火" and is_zao_tu(zhi_cn):
+            z_effect = "生助"
+        elif is_yue_ling and ri_gan_wx == "水" and is_shi_tu(zhi_cn):
+            z_effect = "生助"
+        # 3. 普通五行生克
+        elif zhi_wx == ri_gan_wx or is_sheng_zhu_wx(zhi_wx, ri_gan_wx):
+            z_effect = "生助"
         else:
-            yong_zhi_flags.append(False)
-            ji_words.append(zhis[i])
+            z_effect = "克泄耗"
+
+        is_yong_z = (z_effect == "生助") if yong_shen == "生助日干的字（印、比劫）" else (z_effect == "克泄耗")
+        yong_zhi_flags.append(is_yong_z)
+        if is_yong_z:
+            yong_words.append(zhi_cn)
+        else:
+            ji_words.append(zhi_cn)
 
     yong_str = "、".join(dict.fromkeys(yong_words))
     ji_str = "、".join(dict.fromkeys(ji_words))
@@ -687,8 +775,46 @@ if btn_paipan:
 
     lines = ["年柱", "月柱", "日柱", "时柱"]
     for i in range(4):
-        gan_span = f"<span style='display:inline-block;border:2px solid #4A90D9;border-radius:6px;padding:4px 8px;margin:2px;'>{gans[i]}</span>" if yong_gan_flags[i] else gans[i]
-        zhi_span = f"<span style='display:inline-block;border:2px solid #4A90D9;border-radius:6px;padding:4px 8px;margin:2px;'>{zhis[i]}</span>" if yong_zhi_flags[i] else zhis[i]
+        # 天干十神
+        if gan_idx[i] == ri_gan_idx:
+            gan_ss = "日主"
+        else:
+            g_wx = GAN_WU_XING[gan_idx[i]]
+            ri_wx = GAN_WU_XING[ri_gan_idx]
+            if g_wx == ri_wx:
+                gan_ss = "比劫"
+            elif is_sheng_zhu_wx(g_wx, ri_wx):
+                gan_ss = "印星"
+            elif is_sheng_zhu_wx(ri_wx, g_wx):
+                gan_ss = "食伤"
+            elif (g_wx == "金" and ri_wx == "木") or \
+                 (g_wx == "木" and ri_wx == "土") or \
+                 (g_wx == "土" and ri_wx == "水") or \
+                 (g_wx == "水" and ri_wx == "火") or \
+                 (g_wx == "火" and ri_wx == "金"):
+                gan_ss = "官杀"
+            else:
+                gan_ss = "财星"
+
+        # 地支十神
+        zhi_wx = ZHI_WU_XING[DI_ZHI_CN.index(zhis[i])]
+        if zhi_wx == ri_wx:
+            zhi_ss = "比劫"
+        elif is_sheng_zhu_wx(zhi_wx, ri_wx):
+            zhi_ss = "印星"
+        elif is_sheng_zhu_wx(ri_wx, zhi_wx):
+            zhi_ss = "食伤"
+        elif (zhi_wx == "金" and ri_wx == "木") or \
+             (zhi_wx == "木" and ri_wx == "土") or \
+             (zhi_wx == "土" and ri_wx == "水") or \
+             (zhi_wx == "水" and ri_wx == "火") or \
+             (zhi_wx == "火" and ri_wx == "金"):
+            zhi_ss = "官杀"
+        else:
+            zhi_ss = "财星"
+
+        gan_span = f"<span style='display:inline-block;border:2px solid #4A90D9;border-radius:6px;padding:4px 8px;margin:2px;'>{gans[i]}<sub style='font-size:12px;color:#888;'>{gan_ss}</sub></span>" if yong_gan_flags[i] else f"<span style='display:inline-block;padding:4px 8px;margin:2px;'>{gans[i]}<sub style='font-size:12px;color:#888;'>{gan_ss}</sub></span>"
+        zhi_span = f"<span style='display:inline-block;border:2px solid #4A90D9;border-radius:6px;padding:4px 8px;margin:2px;'>{zhis[i]}<sup style='font-size:12px;color:#888;'>{zhi_ss}</sup></span>" if yong_zhi_flags[i] else f"<span style='display:inline-block;padding:4px 8px;margin:2px;'>{zhis[i]}<sup style='font-size:12px;color:#888;'>{zhi_ss}</sup></span>"
         st.markdown(f"<p style='text-align:center; font-size:28px;'><b>{lines[i]}</b>　　{gan_span}{zhi_span}</p>", unsafe_allow_html=True)
 
     st.markdown(f"<p style='text-align:center; font-size:22px;'><b>格局：{geju}</b></p>", unsafe_allow_html=True)
