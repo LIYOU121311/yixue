@@ -441,6 +441,18 @@ def get_ge_ju(ri_gan_idx, ri_zhi, yue_gan_idx, yue_zhi, shi_gan_idx, shi_zhi, ni
     return geju
 
 
+def get_yong_ji(geju):
+    if geju == "从弱格":
+        return "克泄耗日干的字", "生助日干的字"
+    elif geju == "身弱格":
+        return "生助日干的字", "克泄耗日干的字"
+    elif geju == "身旺格":
+        return "克泄耗日干的字", "生助日干的字"
+    elif geju == "从旺格":
+        return "生助日干的字", "克泄耗日干的字"
+    return "", ""
+
+
 # ========== 界面 ==========
 
 st.subheader("请输入出生信息")
@@ -628,6 +640,34 @@ if btn_paipan:
     shishen = [get_shi_shen(ri_gan_idx, g) for g in gan_idx]
 
     geju = get_ge_ju(ri_gan_idx, zhis[2], yue_gan_idx, zhis[1], shi_gan_idx, zhis[3], zhis[0], nian_gan_idx, gans, zhis)
+    yong_shen, ji_shen = get_yong_ji(geju)
+
+    # 判断每个天干和地支的用忌
+    yong_words = []
+    ji_words = []
+    yong_gan_flags = []
+    yong_zhi_flags = []
+    for i in range(4):
+        g_wx_idx = WU_XING_INDEX[GAN_WU_XING[gan_idx[i]]]
+        r_wx_idx = WU_XING_INDEX[GAN_WU_XING[ri_gan_idx]]
+        diff_g = (g_wx_idx - r_wx_idx) % 5
+        if diff_g == 0 or diff_g == 4:
+            yong_gan_flags.append(True)
+            yong_words.append(gans[i])
+        else:
+            yong_gan_flags.append(False)
+            ji_words.append(gans[i])
+
+        z_effect = get_sheng_zhu_or_ke_xie(ri_gan_idx, gan_idx[i], zhis[i], same_column_gan=gans[i])
+        if z_effect == "生助":
+            yong_zhi_flags.append(True)
+            yong_words.append(zhis[i])
+        else:
+            yong_zhi_flags.append(False)
+            ji_words.append(zhis[i])
+
+    yong_str = "、".join(dict.fromkeys(yong_words))
+    ji_str = "、".join(dict.fromkeys(ji_words))
 
     shun_pai = (nian_yy == "阳" and gender == "男") or (nian_yy == "阴" and gender == "女")
     dayun = get_dayun(yue_zhu_cn, shun_pai, start_age)
@@ -645,16 +685,15 @@ if btn_paipan:
     st.divider()
     st.subheader("排盘结果")
 
-    st.markdown(f"""
-    <div style="text-align:center; font-size:28px; line-height:2;">
-        <p><b>年柱</b>　　{gans[0]}{zhis[0]}</p>
-        <p><b>月柱</b>　　{gans[1]}{zhis[1]}</p>
-        <p><b>日柱</b>　　{gans[2]}{zhis[2]}</p>
-        <p><b>时柱</b>　　{gans[3]}{zhis[3]}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    lines = ["年柱", "月柱", "日柱", "时柱"]
+    for i in range(4):
+        gan_span = f"<span style='display:inline-block;border:2px solid #4A90D9;border-radius:6px;padding:4px 8px;margin:2px;'>{gans[i]}</span>" if yong_gan_flags[i] else gans[i]
+        zhi_span = f"<span style='display:inline-block;border:2px solid #4A90D9;border-radius:6px;padding:4px 8px;margin:2px;'>{zhis[i]}</span>" if yong_zhi_flags[i] else zhis[i]
+        st.markdown(f"<p style='text-align:center; font-size:28px;'><b>{lines[i]}</b>　　{gan_span}{zhi_span}</p>", unsafe_allow_html=True)
 
     st.markdown(f"<p style='text-align:center; font-size:22px;'><b>格局：{geju}</b></p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align:center; font-size:18px;'>理论用神：{yong_str}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align:center; font-size:18px;'>理论忌神：{ji_str}</p>", unsafe_allow_html=True)
 
     st.divider()
     st.subheader("详细信息")
@@ -718,4 +757,5 @@ if btn_paipan:
     st.info(f"**四柱**：{gans[0]}{zhis[0]} {gans[1]}{zhis[1]} {gans[2]}{zhis[2]} {gans[3]}{zhis[3]}　|　"
             f"**日主**：{gans[2]}　|　"
             f"**格局**：{geju}　|　"
+            f"**用神**：{yong_str}　|　"
             f"**流年**：{ln_name}（{ln_shi_shen}）")
