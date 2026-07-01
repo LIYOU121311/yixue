@@ -51,6 +51,10 @@ KONG_WANG = {
     "癸亥": ["子", "丑"],
 }
 
+ZHI_KU = {
+    "辰": "水库", "戌": "火库", "丑": "金库", "未": "木库",
+}
+
 WU_XING_INDEX = {"木": 0, "火": 1, "土": 2, "金": 3, "水": 4}
 
 SHI_SHEN_NAMES = {
@@ -78,6 +82,8 @@ ALL_ZHI = DI_ZHI_CN * 5
 SIXTY_JIAZI = [ALL_GAN[i] + ALL_ZHI[i] for i in range(60)]
 
 
+# ========== 计算函数 ==========
+
 def get_shi_shen(ri_gan_idx, target_gan_idx):
     if ri_gan_idx == target_gan_idx:
         return "日主"
@@ -98,6 +104,28 @@ def get_shi_shen(ri_gan_idx, target_gan_idx):
         key = "生"
     key += "+" + ri_yy + "+" + t_yy
     return SHI_SHEN_NAMES.get(key, "?")
+
+
+def get_sheng_ke(A, B, tiangan):
+    if tiangan == "天干":
+        a_wx = GAN_WU_XING[A]
+        b_wx = GAN_WU_XING[B]
+    else:
+        a_wx = ZHI_WU_XING[A]
+        b_wx = ZHI_WU_XING[B]
+    a_num = WU_XING_INDEX[a_wx]
+    b_num = WU_XING_INDEX[b_wx]
+    diff = (b_num - a_num) % 5
+    if diff == 0:
+        return "同"
+    elif diff == 1:
+        return "生"
+    elif diff == 2:
+        return "泄"
+    elif diff == 3:
+        return "耗"
+    else:
+        return "克"
 
 
 def get_dayun(yue_zhu_cn, shun_pai, start_age=1, count=8):
@@ -153,6 +181,264 @@ def calc_start_age(year, month, day, shun_pai):
                         if days <= 31:
                             return max(1, round(days / 3))
         return 8
+
+
+# ========== 格局函数 ==========
+
+def get_guan_qi(ri_gan, zhi):
+    table = {
+        "甲": [3, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 3],
+        "乙": [3, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 3],
+        "丙": [1, 1, 3, 3, 1, 3, 3, 1.3, 1, 1, 0, 1],
+        "丁": [1, 1, 3, 3, 1, 3, 3, 1.3, 1, 1, 0.3, 1],
+        "戊": [1, 1, 1, 1, 1, 3, 3, 3, 1, 1, 0, 1],
+        "己": [1, 1, 1, 1, 1, 3, 3, 3, 1, 1, 3, 1],
+        "庚": [1, 0, 1, 1, 3, 1, 1, 1, 3, 3, 1, 1],
+        "辛": [1, 3, 1, 1, 3, 1, 1, 1, 3, 3, 1, 1],
+        "壬": [3, 1.3, 1, 0, 1, 1, 1, 1, 3, 3, 1, 3],
+        "癸": [3, 1.3, 1, 0.3, 1, 1, 1, 1, 3, 3, 1, 3],
+    }
+    zhi_idx = DI_ZHI_CN.index(zhi)
+    return table[ri_gan][zhi_idx]
+
+
+def is_zao_tu(zhi):
+    return zhi in ["戌", "未"]
+
+
+def is_shi_tu(zhi):
+    return zhi in ["辰", "丑"]
+
+
+def is_tu(zhi):
+    return zhi in ["辰", "戌", "丑", "未"]
+
+
+def check_tu_special(gan, zhi, same_column_gan=None):
+    if gan in ["戊", "己"] and is_zao_tu(zhi):
+        return "生助"
+    if gan in ["戊", "己"] and is_shi_tu(zhi):
+        return "克泄耗"
+    if is_tu(zhi) and gan in ["戊", "己"]:
+        return "克泄耗"
+    if gan in ["丙", "丁"] and is_zao_tu(zhi) and same_column_gan == gan:
+        return "生助"
+    if gan in ["丙", "丁"] and is_shi_tu(zhi):
+        return "克泄耗"
+    if gan in ["庚", "辛"] and is_zao_tu(zhi):
+        return "克泄耗"
+    if gan in ["庚", "辛"] and is_shi_tu(zhi):
+        return "生助"
+    if gan in ["壬", "癸"] and is_shi_tu(zhi) and same_column_gan == gan:
+        return "生助"
+    if gan in ["壬", "癸"] and is_shi_tu(zhi) and same_column_gan != gan:
+        return "克泄耗"
+    if is_shi_tu(zhi) and is_zao_tu(gan):
+        return "克泄耗"
+    if is_zao_tu(zhi) and is_shi_tu(gan):
+        return "克泄耗"
+    return None
+
+
+def get_sheng_zhu_or_ke_xie(ri_gan_idx, target_gan_idx, target_zhi, same_column_gan=None):
+    target_gan = TIAN_GAN_CN[target_gan_idx]
+    ri_gan = TIAN_GAN_CN[ri_gan_idx]
+    tu_result = check_tu_special(ri_gan, target_zhi, same_column_gan)
+    if tu_result:
+        return tu_result
+    zhi_idx = DI_ZHI_CN.index(target_zhi)
+    zhi_wx = ZHI_WU_XING[zhi_idx]
+    ri_wx = GAN_WU_XING[ri_gan_idx]
+    zhi_num = WU_XING_INDEX[zhi_wx]
+    ri_num = WU_XING_INDEX[ri_wx]
+    diff = (zhi_num - ri_num) % 5
+    if diff == 0 or diff == 1 or diff == 4:
+        return "生助"
+    else:
+        return "克泄耗"
+
+
+def check_you_li(gan_idx, zhi_idx, all_gans, all_zhis):
+    target_gan = TIAN_GAN_CN[gan_idx]
+    target_zhi = DI_ZHI_CN[zhi_idx]
+    zhi_wx = ZHI_WU_XING[zhi_idx]
+    gan_wx = GAN_WU_XING[gan_idx]
+    zhi_num = WU_XING_INDEX[zhi_wx]
+    gan_num = WU_XING_INDEX[gan_wx]
+    diff = (gan_num - zhi_num) % 5
+    if diff == 1 or diff == 0 or diff == 4:
+        tu_special = check_tu_special(target_gan, target_zhi, target_gan)
+        if tu_special == "生助" or tu_special is None:
+            return True
+    else:
+        tu_special = check_tu_special(target_gan, target_zhi, target_gan)
+        if tu_special != "生助":
+            return False
+    return True
+
+
+def check_fan_duan(ri_gan, ri_zhi, yue_zhi, nian_zhi, yue_gan_idx, nian_gan_idx, ri_gan_idx, yue_zhi_kong):
+    ri_zhi_guan_qi = get_guan_qi(ri_gan, ri_zhi)
+    if ri_zhi_guan_qi == 0:
+        ri_zhi_effect = get_sheng_zhu_or_ke_xie(ri_gan_idx, ri_gan_idx, ri_zhi)
+        ri_zhi_direction = "旺" if ri_zhi_effect == "生助" else "弱"
+    elif ri_zhi_guan_qi == 3 or ri_zhi_guan_qi == 1.3 or ri_zhi_guan_qi == 0.3:
+        ri_zhi_direction = "旺"
+    else:
+        ri_zhi_direction = "弱"
+
+    if not yue_zhi_kong:
+        used_zhi = yue_zhi
+    else:
+        used_zhi = nian_zhi
+    used_zhi_guan_qi = get_guan_qi(ri_gan, used_zhi)
+
+    if used_zhi_guan_qi == 0:
+        used_zhi_effect = get_sheng_zhu_or_ke_xie(ri_gan_idx, ri_gan_idx, used_zhi)
+        used_zhi_direction = "旺" if used_zhi_effect == "生助" else "弱"
+    elif used_zhi_guan_qi == 3 or used_zhi_guan_qi == 1.3 or used_zhi_guan_qi == 0.3:
+        used_zhi_direction = "旺"
+    else:
+        used_zhi_direction = "弱"
+
+    if ri_zhi_direction == used_zhi_direction:
+        return False
+
+    if not yue_zhi_kong:
+        ke_count = 0
+        nian_zhi_wx = ZHI_WU_XING[DI_ZHI_CN.index(nian_zhi)]
+        yue_zhi_wx = ZHI_WU_XING[DI_ZHI_CN.index(yue_zhi)]
+        if (nian_zhi_wx == "金" and yue_zhi_wx == "木") or \
+           (nian_zhi_wx == "木" and yue_zhi_wx == "土") or \
+           (nian_zhi_wx == "土" and yue_zhi_wx == "水") or \
+           (nian_zhi_wx == "水" and yue_zhi_wx == "火") or \
+           (nian_zhi_wx == "火" and yue_zhi_wx == "金"):
+            ke_count += 1
+        yue_gan_wx = GAN_WU_XING[yue_gan_idx]
+        if (yue_gan_wx == "金" and yue_zhi_wx == "木") or \
+           (yue_gan_wx == "木" and yue_zhi_wx == "土") or \
+           (yue_gan_wx == "土" and yue_zhi_wx == "水") or \
+           (yue_gan_wx == "水" and yue_zhi_wx == "火") or \
+           (yue_gan_wx == "火" and yue_zhi_wx == "金"):
+            ke_count += 1
+        ri_zhi_wx = ZHI_WU_XING[DI_ZHI_CN.index(ri_zhi)]
+        if (ri_zhi_wx == "金" and yue_zhi_wx == "木") or \
+           (ri_zhi_wx == "木" and yue_zhi_wx == "土") or \
+           (ri_zhi_wx == "土" and yue_zhi_wx == "水") or \
+           (ri_zhi_wx == "水" and yue_zhi_wx == "火") or \
+           (ri_zhi_wx == "火" and yue_zhi_wx == "金"):
+            ke_count += 1
+        return ke_count >= 2
+    else:
+        ke_count = 0
+        nian_gan_wx = GAN_WU_XING[nian_gan_idx]
+        nian_zhi_wx = ZHI_WU_XING[DI_ZHI_CN.index(nian_zhi)]
+        if (nian_gan_wx == "金" and nian_zhi_wx == "木") or \
+           (nian_gan_wx == "木" and nian_zhi_wx == "土") or \
+           (nian_gan_wx == "土" and nian_zhi_wx == "水") or \
+           (nian_gan_wx == "水" and nian_zhi_wx == "火") or \
+           (nian_gan_wx == "火" and nian_zhi_wx == "金"):
+            ke_count += 1
+        yue_zhi_wx = ZHI_WU_XING[DI_ZHI_CN.index(yue_zhi)]
+        if (yue_zhi_wx == "金" and nian_zhi_wx == "木") or \
+           (yue_zhi_wx == "木" and nian_zhi_wx == "土") or \
+           (yue_zhi_wx == "土" and nian_zhi_wx == "水") or \
+           (yue_zhi_wx == "水" and nian_zhi_wx == "火") or \
+           (yue_zhi_wx == "火" and nian_zhi_wx == "金"):
+            ke_count += 1
+        return ke_count >= 2
+
+
+def check_shizhi_cheng_ge(geju, shi_zhi, shi_gan, ri_zhi, ri_gan_idx):
+    if geju != "从弱格":
+        return geju
+    ke_shi_gan = get_sheng_zhu_or_ke_xie(ri_gan_idx, TIAN_GAN_CN.index(shi_gan), shi_zhi) == "克泄耗"
+    ke_ri_zhi = get_sheng_zhu_or_ke_xie(ri_gan_idx, ri_gan_idx, shi_zhi) == "克泄耗"
+    if not (ke_shi_gan or ke_ri_zhi):
+        return geju
+    if get_sheng_zhu_or_ke_xie(ri_gan_idx, ri_gan_idx, shi_zhi) == "生助":
+        return "身弱格"
+    return geju
+
+
+def get_ge_ju(ri_gan_idx, ri_zhi, yue_gan_idx, yue_zhi, shi_gan_idx, shi_zhi, nian_zhi, nian_gan_idx, all_gans, all_zhis):
+    ri_gan = TIAN_GAN_CN[ri_gan_idx]
+    ri_zhu = ri_gan + ri_zhi
+    ri_kong = KONG_WANG.get(ri_zhu, ["", ""])
+    yue_zhi_kong = yue_zhi in ri_kong
+    if yue_zhi_kong:
+        used_zhi = nian_zhi
+    else:
+        used_zhi = yue_zhi
+    guan_qi = get_guan_qi(ri_gan, used_zhi)
+
+    ri_zhi_effect = get_sheng_zhu_or_ke_xie(ri_gan_idx, ri_gan_idx, ri_zhi)
+    yue_effect = get_sheng_zhu_or_ke_xie(ri_gan_idx, yue_gan_idx, yue_zhi)
+    shi_effect = get_sheng_zhu_or_ke_xie(ri_gan_idx, shi_gan_idx, shi_zhi)
+
+    yue_you_li = check_you_li(yue_gan_idx, DI_ZHI_CN.index(yue_zhi), all_gans, all_zhis)
+    shi_you_li = check_you_li(shi_gan_idx, DI_ZHI_CN.index(shi_zhi), all_gans, all_zhis)
+    ri_you_li = True
+
+    sheng_zhu_count = 0
+    wu_li_count = 0
+
+    if ri_zhi_effect == "生助":
+        sheng_zhu_count += 1
+    else:
+        if not ri_you_li:
+            wu_li_count += 1
+
+    if yue_effect == "生助":
+        sheng_zhu_count += 1
+    else:
+        if not yue_you_li:
+            wu_li_count += 1
+
+    if shi_effect == "生助":
+        sheng_zhu_count += 1
+    else:
+        if not shi_you_li:
+            wu_li_count += 1
+
+    if guan_qi == 3:
+        if wu_li_count == 3:
+            geju = "从旺格"
+        else:
+            geju = "身旺格"
+    elif guan_qi == 1:
+        if sheng_zhu_count == 0 and wu_li_count == 3:
+            geju = "从弱格"
+        else:
+            geju = "身弱格"
+    elif guan_qi == 0:
+        if ri_zhi_effect == "生助":
+            if yue_you_li or shi_you_li:
+                geju = "身旺格"
+            else:
+                geju = "从旺格"
+        else:
+            if yue_you_li or shi_you_li:
+                geju = "身弱格"
+            else:
+                geju = "从弱格"
+    else:
+        if sheng_zhu_count == 3:
+            geju = "从旺格"
+        elif sheng_zhu_count >= 2:
+            geju = "身旺格"
+        else:
+            geju = "身弱格"
+
+    geju = check_shizhi_cheng_ge(geju, shi_zhi, TIAN_GAN_CN[shi_gan_idx], ri_zhi, ri_gan_idx)
+
+    if check_fan_duan(ri_gan, ri_zhi, yue_zhi, nian_zhi, yue_gan_idx, nian_gan_idx, ri_gan_idx, yue_zhi_kong):
+        if geju == "身旺格":
+            geju = "身弱格"
+        elif geju == "身弱格":
+            geju = "身旺格"
+
+    return geju
 
 
 # ========== 界面 ==========
@@ -233,7 +519,6 @@ if not use_direct:
     with st.expander("📌 常用城市经度参考"):
         st.caption("北京116.4 | 上海121.5 | 广州113.3 | 深圳114.1 | 成都104.1 | 重庆106.5 | 西安108.9 | 武汉114.3 | 南京118.8 | 杭州120.2 | 哈尔滨126.6 | 沈阳123.4 | 天津117.2 | 昆明102.7 | 贵阳106.7 | 南宁108.3 | 福州119.3 | 郑州113.7 | 济南117.0 | 长沙113.0 | 南昌115.9 | 兰州103.8 | 乌鲁木齐87.6 | 拉萨91.1 | 海口110.3 | 香港114.2 | 台北121.5")
 
-    # 真太阳时
     time_diff = round((lng_input - 120) * 4)
     true_hour = hour_input + time_diff // 60
     true_minute = minute_input + time_diff % 60
@@ -342,6 +627,8 @@ if btn_paipan:
     zhi_idx = [nian_zhi_idx, yue_zhi_idx, ri_zhi_idx, shi_zhi_idx]
     shishen = [get_shi_shen(ri_gan_idx, g) for g in gan_idx]
 
+    geju = get_ge_ju(ri_gan_idx, zhis[2], yue_gan_idx, zhis[1], shi_gan_idx, zhis[3], zhis[0], nian_gan_idx, gans, zhis)
+
     shun_pai = (nian_yy == "阳" and gender == "男") or (nian_yy == "阴" and gender == "女")
     dayun = get_dayun(yue_zhu_cn, shun_pai, start_age)
 
@@ -367,10 +654,11 @@ if btn_paipan:
     </div>
     """, unsafe_allow_html=True)
 
+    st.markdown(f"<p style='text-align:center; font-size:22px;'><b>格局：{geju}</b></p>", unsafe_allow_html=True)
+
     st.divider()
     st.subheader("详细信息")
 
-    # 用HTML表格保证手机上也横排
     html_table = """
     <style>
     .detail-table { width:100%; border-collapse:collapse; font-size:14px; }
@@ -381,9 +669,9 @@ if btn_paipan:
     <table class="detail-table">
     <tr><th class="label-col"></th><th>年柱</th><th>月柱</th><th>日柱</th><th>时柱</th></tr>
     """
-    
-    labels = ["天干", "地支", "藏干", "十神", "五行", "空亡"]
-    for j, label in enumerate(labels):
+
+    labels = ["天干", "地支", "藏干", "十神", "五行", "库", "空亡"]
+    for label in labels:
         html_table += f"<tr><td class='label-col'>{label}</td>"
         for i in range(4):
             if label == "天干":
@@ -396,12 +684,14 @@ if btn_paipan:
                 val = shishen[i]
             elif label == "五行":
                 val = GAN_WU_XING[gan_idx[i]] + ZHI_WU_XING[zhi_idx[i]]
+            elif label == "库":
+                val = ZHI_KU.get(zhis[i], "")
             elif label == "空亡":
                 kong = KONG_WANG.get(gans[i] + zhis[i], ["", ""])
                 val = "/".join(kong) if kong[0] else ""
             html_table += f"<td>{val}</td>"
         html_table += "</tr>"
-    
+
     html_table += "</table>"
     st.markdown(html_table, unsafe_allow_html=True)
 
@@ -427,4 +717,5 @@ if btn_paipan:
 
     st.info(f"**四柱**：{gans[0]}{zhis[0]} {gans[1]}{zhis[1]} {gans[2]}{zhis[2]} {gans[3]}{zhis[3]}　|　"
             f"**日主**：{gans[2]}　|　"
+            f"**格局**：{geju}　|　"
             f"**流年**：{ln_name}（{ln_shi_shen}）")
