@@ -1,3 +1,4 @@
+from openai import OpenAI
 import streamlit as st
 from datetime import date, datetime
 from lunardate import LunarDate
@@ -5,7 +6,7 @@ from lunardate import LunarDate
 st.set_page_config(page_title="易学助手")
 
 st.title("易学助手 - 八字排盘")
-
+client = OpenAI(api_key="sk-19ed17d8cd0e442995dd9d0ad9d5725f", base_url="https://api.deepseek.com")
 # ========== 基础数据 ==========
 
 TIAN_GAN_PY = ["Jia", "Yi", "Bing", "Ding", "Wu", "Ji", "Geng", "Xin", "Ren", "Gui"]
@@ -147,26 +148,45 @@ def get_liunian(year):
     return TIAN_GAN_CN[gan_idx] + DI_ZHI_CN[zhi_idx], gan_idx, zhi_idx
 
 
-def calc_start_age(year, month, day, shun_pai):
-    birth = datetime(year, month, day)
+def calc_start_age(year, month, day, hour, shun_pai):
+    """精确到时辰的起运时间计算
+    规则：3天=1岁，1天=4个月，1个时辰=10天
+    """
+    birth = datetime(year, month, day, hour, 0, 0)
     jie_qi = {
         "小寒": (1, 5), "立春": (2, 4), "惊蛰": (3, 6),
         "清明": (4, 5), "立夏": (5, 6), "芒种": (6, 6),
         "小暑": (7, 7), "立秋": (8, 8), "白露": (9, 8),
         "寒露": (10, 8), "立冬": (11, 7), "大雪": (12, 7),
     }
+    
     if shun_pai:
         for i in range(12):
             m = (month - 1 + i) % 12 + 1
             y = year if m >= month else year + 1
             for name, (jm, jd) in jie_qi.items():
                 if jm == m:
-                    jq_date = datetime(y, jm, jd)
+                    # 节气按当天0时算
+                    jq_date = datetime(y, jm, jd, 0, 0, 0)
                     if jq_date > birth:
-                        days = (jq_date - birth).days
-                        if days <= 31:
-                            return max(1, round(days / 3))
-        return 8
+                        # 精确到小时的天数差
+                        hours_diff = (jq_date - birth).total_seconds() / 3600
+                        # 1个时辰(2小时)=10天，所以1小时=5天
+                        # 加上：3天=1岁=12个月，所以1天=4个月
+                        total_days = hours_diff / 24
+                        
+                        # 先用3天=1岁算出整数岁
+                        years = int(total_days / 3)
+                        # 剩下的天数
+                        remaining_days = total_days - years * 3
+                        # 1天=4个月
+                        total_months = remaining_days * 4
+                        months = int(total_months)
+                        # 剩下的月数转天数，1个月=30天
+                        days = round((total_months - months) * 30)
+                        
+                        return years, months, days
+        return 8, 0, 0
     else:
         for i in range(12):
             m = (month - 1 - i) % 12 + 1
@@ -175,13 +195,19 @@ def calc_start_age(year, month, day, shun_pai):
             y = year if m <= month else year - 1
             for name, (jm, jd) in jie_qi.items():
                 if jm == m:
-                    jq_date = datetime(y, jm, jd)
+                    jq_date = datetime(y, jm, jd, 0, 0, 0)
                     if jq_date < birth:
-                        days = (birth - jq_date).days
-                        if days <= 31:
-                            return max(1, round(days / 3))
-        return 8
-
+                        hours_diff = (birth - jq_date).total_seconds() / 3600
+                        total_days = hours_diff / 24
+                        
+                        years = int(total_days / 3)
+                        remaining_days = total_days - years * 3
+                        total_months = remaining_days * 4
+                        months = int(total_months)
+                        days = round((total_months - months) * 30)
+                        
+                        return years, months, days
+        return 8, 0, 0
 
 # ========== 格局函数 ==========
 
@@ -574,6 +600,14 @@ if not use_direct:
     with col2:
         minute_input = st.number_input("出生分", min_value=0, max_value=59, value=0, step=1)
 
+    # 夏令时选项
+    is_dst = st.checkbox("夏令时（1986-1991年4月中至9月中出生需勾选）")
+    # 夏令时修正：减去1小时
+    if is_dst:
+        hour_input = hour_input - 1
+        if hour_input < 0:
+            hour_input = 23
+
     col1, col2, col3 = st.columns(3)
     with col1:
         province = st.text_input("省/直辖市", value="广东")
@@ -651,6 +685,7 @@ if btn_paipan:
         yue_zhu_cn = yue_gan + yue_zhi
         start_age = 1
         solar_year = 2000
+        start_age_str = f"{start_age}岁"
     else:
         year_val = solar_year
         month_val = solar_month
@@ -691,7 +726,9 @@ if btn_paipan:
 
         solar_year = year_val
         shun_pai = (nian_yy == "阳" and gender == "男") or (nian_yy == "阴" and gender == "女")
-        start_age = calc_start_age(year_val, month_val, day_val, shun_pai)
+        start_age_y, start_age_m, start_age_d = calc_start_age(year_val, month_val, day_val, true_hour, shun_pai)
+        start_age = start_age_y  # 大运列表用整数岁
+        start_age_str = f"{start_age_y}岁{start_age_m}个月{start_age_d}天"
 
     gans = [TIAN_GAN_CN[nian_gan_idx], TIAN_GAN_CN[yue_gan_idx], TIAN_GAN_CN[ri_gan_idx], TIAN_GAN_CN[shi_gan_idx]]
     zhis = [DI_ZHI_CN[nian_zhi_idx], DI_ZHI_CN[yue_zhi_idx], DI_ZHI_CN[ri_zhi_idx], DI_ZHI_CN[shi_zhi_idx]]
@@ -757,6 +794,152 @@ if btn_paipan:
     yong_str = "、".join(dict.fromkeys(yong_words))
     ji_str = "、".join(dict.fromkeys(ji_words))
 
+       # ===== 日主用忌神判断（11条路线）=====
+    # 日干的理论用忌属性
+    # 身弱格：生助日干的为用神 → 日干自己是理论用神
+    # 身旺格：克泄耗日干的为用神 → 日干自己是理论用神
+    # 日主在任何格局下都算理论用神（自己帮自己）
+    ri_gan_is_yong = True  # 日主永远是理论用神
+
+    def route_end_ji_xiong(end_effect):
+        """路线最终作用是生助还是克泄耗 → 出吉还是出凶"""
+        if ri_gan_is_yong:
+            # 日干是理论用神：生助=出吉，克泄耗=出凶
+            return "吉" if end_effect == "生助" else "凶"
+        else:
+            # 日干是理论忌神：克泄耗=出吉，生助=出凶
+            return "吉" if end_effect == "克泄耗" else "凶"
+
+    def step_ji_xiong(from_gan_idx, from_zhi_idx, to_gan_idx, to_zhi_idx, is_to_gan):
+        """判断一步的生克：from对to是生助还是克泄耗"""
+        if is_to_gan:
+            # 目标天干，from对to天干的作用
+            from_wx = GAN_WU_XING[from_gan_idx]
+            to_wx = GAN_WU_XING[to_gan_idx]
+        else:
+            # 目标地支，from对to地支的作用
+            from_wx = GAN_WU_XING[from_gan_idx]
+            to_wx = ZHI_WU_XING[to_zhi_idx]
+        
+        from_num = WU_XING_INDEX[from_wx]
+        to_num = WU_XING_INDEX[to_wx]
+        diff = (to_num - from_num) % 5
+        
+        if diff == 0 or diff == 4:  # 同五行或生
+            return "生助"
+        else:
+            return "克泄耗"
+
+    # 存储每个字的路线结果
+    # 结构：{字标识: {"吉": 条数, "凶": 条数}}
+    route_results = {
+        "年干": {"吉": 0, "凶": 0},
+        "年支": {"吉": 0, "凶": 0},
+        "月干": {"吉": 0, "凶": 0},
+        "月支": {"吉": 0, "凶": 0},
+        "日支": {"吉": 0, "凶": 0},
+        "时干": {"吉": 0, "凶": 0},
+        "时支": {"吉": 0, "凶": 0},
+    }
+
+    # 路线1：年干→月干→日干
+    step1 = step_ji_xiong(gan_idx[0], zhi_idx[0], gan_idx[1], zhi_idx[1], True)
+    step2 = step_ji_xiong(gan_idx[1], zhi_idx[1], ri_gan_idx, zhi_idx[2], True)
+    end_effect = "生助" if step1 == "生助" and step2 == "生助" else "克泄耗"
+    result = route_end_ji_xiong(end_effect)
+    route_results["年干"][result] += 1
+
+    # 路线2：年干→年支→月支→日支→日干
+    step1 = step_ji_xiong(gan_idx[0], zhi_idx[0], gan_idx[0], zhi_idx[0], False)
+    step2 = step_ji_xiong(gan_idx[0], zhi_idx[0], gan_idx[1], zhi_idx[1], False)
+    step3 = step_ji_xiong(gan_idx[1], zhi_idx[1], ri_gan_idx, zhi_idx[2], False)
+    step4 = step_ji_xiong(gan_idx[2], zhi_idx[2], ri_gan_idx, zhi_idx[2], True)
+    end_effect = "生助" if step1 == "生助" and step2 == "生助" and step3 == "生助" and step4 == "生助" else "克泄耗"
+    result = route_end_ji_xiong(end_effect)
+    route_results["年干"][result] += 1
+
+    # 路线3：年支→年干→月干→日干
+    step1 = step_ji_xiong(gan_idx[0], zhi_idx[0], gan_idx[0], zhi_idx[0], True)
+    step2 = step_ji_xiong(gan_idx[0], zhi_idx[0], gan_idx[1], zhi_idx[1], True)
+    step3 = step_ji_xiong(gan_idx[1], zhi_idx[1], ri_gan_idx, zhi_idx[2], True)
+    end_effect = "生助" if step1 == "生助" and step2 == "生助" and step3 == "生助" else "克泄耗"
+    result = route_end_ji_xiong(end_effect)
+    route_results["年支"][result] += 1
+
+    # 路线4：年支→月支→日支→日干
+    step1 = step_ji_xiong(gan_idx[0], zhi_idx[0], gan_idx[1], zhi_idx[1], False)
+    step2 = step_ji_xiong(gan_idx[1], zhi_idx[1], gan_idx[2], zhi_idx[2], False)
+    step3 = step_ji_xiong(gan_idx[2], zhi_idx[2], ri_gan_idx, zhi_idx[2], True)
+    end_effect = "生助" if step1 == "生助" and step2 == "生助" and step3 == "生助" else "克泄耗"
+    result = route_end_ji_xiong(end_effect)
+    route_results["年支"][result] += 1
+
+    # 路线5：月干→日干
+    step1 = step_ji_xiong(gan_idx[1], zhi_idx[1], ri_gan_idx, zhi_idx[2], True)
+    end_effect = "生助" if step1 == "生助" else "克泄耗"
+    result = route_end_ji_xiong(end_effect)
+    route_results["月干"][result] += 1
+
+    # 路线6：月支→月干→日干
+    step1 = step_ji_xiong(gan_idx[1], zhi_idx[1], gan_idx[1], zhi_idx[1], True)
+    step2 = step_ji_xiong(gan_idx[1], zhi_idx[1], ri_gan_idx, zhi_idx[2], True)
+    end_effect = "生助" if step1 == "生助" and step2 == "生助" else "克泄耗"
+    result = route_end_ji_xiong(end_effect)
+    route_results["月支"][result] += 1
+
+    # 路线7：月支→日支→日干
+    step1 = step_ji_xiong(gan_idx[1], zhi_idx[1], gan_idx[2], zhi_idx[2], False)
+    step2 = step_ji_xiong(gan_idx[2], zhi_idx[2], ri_gan_idx, zhi_idx[2], True)
+    end_effect = "生助" if step1 == "生助" and step2 == "生助" else "克泄耗"
+    result = route_end_ji_xiong(end_effect)
+    route_results["月支"][result] += 1
+
+    # 路线8：日支→日干
+    step1 = step_ji_xiong(gan_idx[2], zhi_idx[2], ri_gan_idx, zhi_idx[2], True)
+    end_effect = "生助" if step1 == "生助" else "克泄耗"
+    result = route_end_ji_xiong(end_effect)
+    route_results["日支"][result] += 1
+
+    # 路线9：时干→日干
+    step1 = step_ji_xiong(gan_idx[3], zhi_idx[3], ri_gan_idx, zhi_idx[2], True)
+    end_effect = "生助" if step1 == "生助" else "克泄耗"
+    result = route_end_ji_xiong(end_effect)
+    route_results["时干"][result] += 1
+
+    # 路线10：时支→时干→日干
+    step1 = step_ji_xiong(gan_idx[3], zhi_idx[3], gan_idx[3], zhi_idx[3], True)
+    step2 = step_ji_xiong(gan_idx[3], zhi_idx[3], ri_gan_idx, zhi_idx[2], True)
+    end_effect = "生助" if step1 == "生助" and step2 == "生助" else "克泄耗"
+    result = route_end_ji_xiong(end_effect)
+    route_results["时支"][result] += 1
+
+    # 路线11：时支→日支→日干
+    step1 = step_ji_xiong(gan_idx[3], zhi_idx[3], gan_idx[2], zhi_idx[2], False)
+    step2 = step_ji_xiong(gan_idx[2], zhi_idx[2], ri_gan_idx, zhi_idx[2], True)
+    end_effect = "生助" if step1 == "生助" and step2 == "生助" else "克泄耗"
+    result = route_end_ji_xiong(end_effect)
+    route_results["时支"][result] += 1
+
+    # 汇总判定：全吉=日主用神，全凶=日主忌神，混合=阴阳神
+    rizhu_yong = []
+    rizhu_ji = []
+    yinyang_shen = []
+
+    for name, counts in route_results.items():
+        ji = counts["吉"]
+        xiong = counts["凶"]
+        if ji > 0 and xiong == 0:
+            rizhu_yong.append(name)
+        elif xiong > 0 and ji == 0:
+            rizhu_ji.append(name)
+        elif ji > 0 and xiong > 0:
+            yinyang_shen.append(name)
+
+    # 存入st.session_state
+    st.session_state.rizhu_yong = rizhu_yong
+    st.session_state.rizhu_ji = rizhu_ji
+    st.session_state.yinyang_shen = yinyang_shen
+
     shun_pai = (nian_yy == "阳" and gender == "男") or (nian_yy == "阴" and gender == "女")
     dayun = get_dayun(yue_zhu_cn, shun_pai, start_age)
 
@@ -769,6 +952,86 @@ if btn_paipan:
         if current_year >= solar_year + age and current_year < solar_year + age + 10:
             current_dayun = yun
             break
+
+    # ===== 把所有结果存入 st.session_state =====
+    st.session_state.gans = gans
+    st.session_state.zhis = zhis
+    st.session_state.gan_idx = gan_idx
+    st.session_state.zhi_idx = zhi_idx
+    st.session_state.shishen = shishen
+    st.session_state.geju = geju
+    st.session_state.yong_str = yong_str
+    st.session_state.ji_str = ji_str
+    st.session_state.yong_gan_flags = yong_gan_flags
+    st.session_state.yong_zhi_flags = yong_zhi_flags
+    st.session_state.nian_yy = nian_yy
+    st.session_state.gender = gender
+    st.session_state.start_age = start_age
+    st.session_state.start_age_str = start_age_str
+    st.session_state.dayun = dayun
+    st.session_state.current_dayun = current_dayun
+    st.session_state.current_year = current_year
+    st.session_state.ln_name = ln_name
+    st.session_state.ln_shi_shen = ln_shi_shen
+    st.session_state.ln_wx = ln_wx
+    st.session_state.ri_gan_idx = ri_gan_idx
+    st.session_state.solar_year = solar_year
+    st.session_state.shun_pai = shun_pai
+
+    import json
+    json_data = {
+        "八字": {
+            "年柱": f"{gans[0]}{zhis[0]}",
+            "月柱": f"{gans[1]}{zhis[1]}",
+            "日柱": f"{gans[2]}{zhis[2]}",
+            "时柱": f"{gans[3]}{zhis[3]}"
+        },
+        "日主": gans[2],
+        "格局": geju,
+        "用神": yong_str.split("、") if yong_str else [],
+        "忌神": ji_str.split("、") if ji_str else [],
+        "十神": {
+            "年干": shishen[0],
+            "月干": shishen[1],
+            "日干": "日主",
+            "时干": shishen[3]
+        },
+        "大运": current_dayun if current_dayun else "未排到",
+        "流年": f"{current_year}年 {ln_name}",
+        "五行": {
+            "年柱": GAN_WU_XING[gan_idx[0]] + ZHI_WU_XING[zhi_idx[0]],
+            "月柱": GAN_WU_XING[gan_idx[1]] + ZHI_WU_XING[zhi_idx[1]],
+            "日柱": GAN_WU_XING[ri_gan_idx] + ZHI_WU_XING[zhi_idx[2]],
+            "时柱": GAN_WU_XING[gan_idx[3]] + ZHI_WU_XING[zhi_idx[3]]
+        }
+    }
+    st.session_state.json_data = json_data
+
+# ===== 显示排盘结果（只要有保存的数据就显示）=====
+if "gans" in st.session_state and st.session_state.gans:
+    gans = st.session_state.gans
+    zhis = st.session_state.zhis
+    gan_idx = st.session_state.gan_idx
+    zhi_idx = st.session_state.zhi_idx
+    shishen = st.session_state.shishen
+    geju = st.session_state.geju
+    yong_str = st.session_state.yong_str
+    ji_str = st.session_state.ji_str
+    yong_gan_flags = st.session_state.yong_gan_flags
+    yong_zhi_flags = st.session_state.yong_zhi_flags
+    nian_yy = st.session_state.nian_yy
+    gender = st.session_state.gender
+    start_age = st.session_state.start_age
+    start_age_str = st.session_state.start_age_str
+    dayun = st.session_state.dayun
+    current_dayun = st.session_state.current_dayun
+    current_year = st.session_state.current_year
+    ln_name = st.session_state.ln_name
+    ln_shi_shen = st.session_state.ln_shi_shen
+    ln_wx = st.session_state.ln_wx
+    ri_gan_idx = st.session_state.ri_gan_idx
+    solar_year = st.session_state.solar_year
+    json_data = st.session_state.json_data
 
     st.divider()
     st.subheader("排盘结果")
@@ -820,9 +1083,27 @@ if btn_paipan:
     st.markdown(f"<p style='text-align:center; font-size:22px;'><b>格局：{geju}</b></p>", unsafe_allow_html=True)
     st.markdown(f"<p style='text-align:center; font-size:18px;'>理论用神：{yong_str}</p>", unsafe_allow_html=True)
     st.markdown(f"<p style='text-align:center; font-size:18px;'>理论忌神：{ji_str}</p>", unsafe_allow_html=True)
+    rizhu_yong = st.session_state.get("rizhu_yong", [])
+    rizhu_ji = st.session_state.get("rizhu_ji", [])
+    yinyang_shen = st.session_state.get("yinyang_shen", [])
 
-    st.divider()
-    st.subheader("详细信息")
+    pos_to_ganzhi = {
+        "年干": f"年干{gans[0]}",
+        "年支": f"年支{zhis[0]}",
+        "月干": f"月干{gans[1]}",
+        "月支": f"月支{zhis[1]}",
+        "日支": f"日支{zhis[2]}",
+        "时干": f"时干{gans[3]}",
+        "时支": f"时支{zhis[3]}",
+    }
+
+    rizhu_yong_str = "、".join([pos_to_ganzhi.get(x, x) for x in rizhu_yong])
+    rizhu_ji_str = "、".join([pos_to_ganzhi.get(x, x) for x in rizhu_ji])
+    yinyang_str = "、".join([pos_to_ganzhi.get(x, x) for x in yinyang_shen])
+
+    st.markdown(f"<p style='text-align:center; font-size:18px;'>日主用神：{rizhu_yong_str if rizhu_yong_str else '无'}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align:center; font-size:18px;'>日主忌神：{rizhu_ji_str if rizhu_ji_str else '无'}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align:center; font-size:18px;'>阴阳神：{yinyang_str if yinyang_str else '无'}</p>", unsafe_allow_html=True)
 
     html_table = """
     <style>
@@ -862,8 +1143,8 @@ if btn_paipan:
 
     st.divider()
     st.subheader("大运排盘")
-    direction = "顺排" if shun_pai else "逆排"
-    st.caption(f"年柱{nian_yy}年，{gender}命，{direction}，{start_age}岁起运，每柱十年")
+    direction = "顺排" if st.session_state.shun_pai else "逆排"
+    st.caption(f"年柱{nian_yy}年，{gender}命，{direction}，{start_age_str}起运，每柱十年")
 
     cols = st.columns(8)
     for i, (age, yun) in enumerate(dayun):
@@ -880,8 +1161,106 @@ if btn_paipan:
     with col3:
         st.metric("当前大运", current_dayun if current_dayun else "未排到")
 
+    dayun = st.session_state.get("dayun", [])
+    solar_year = st.session_state.get("solar_year", 2000)
+
+    st.divider()
+    st.subheader("大运流年排盘")
+
+    dayun_options = [f"{age}岁 {yun}" for age, yun in dayun]
+    selected_dayun_idx = st.selectbox("选择大运", range(len(dayun_options)), format_func=lambda i: dayun_options[i])
+
+    if selected_dayun_idx is not None:
+        selected_age, selected_yun = dayun[selected_dayun_idx]
+        start_year_of_dayun = solar_year + selected_age
+        liunian_years = list(range(start_year_of_dayun, start_year_of_dayun + 10))
+
+        ganzhi_cells = ""
+        shishen_cells = ""
+
+        for year in liunian_years:
+            ln_gan_idx_temp = (year - 4) % 10
+            ln_zhi_idx_temp = (year - 4) % 12
+            ln_gan_temp = TIAN_GAN_CN[ln_gan_idx_temp]
+            ln_zhi_temp = DI_ZHI_CN[ln_zhi_idx_temp]
+            ln_name_temp = ln_gan_temp + ln_zhi_temp
+            gan_ss_temp = get_shi_shen(ri_gan_idx, ln_gan_idx_temp)
+            zhi_wx_temp = ZHI_WU_XING[ln_zhi_idx_temp]
+            ri_wx_temp = GAN_WU_XING[ri_gan_idx]
+            if zhi_wx_temp == ri_wx_temp:
+                zhi_ss_temp = "比劫"
+            elif is_sheng_zhu_wx(zhi_wx_temp, ri_wx_temp):
+                zhi_ss_temp = "印星"
+            elif is_sheng_zhu_wx(ri_wx_temp, zhi_wx_temp):
+                zhi_ss_temp = "食伤"
+            elif (zhi_wx_temp == "金" and ri_wx_temp == "木") or \
+                 (zhi_wx_temp == "木" and ri_wx_temp == "土") or \
+                 (zhi_wx_temp == "土" and ri_wx_temp == "水") or \
+                 (zhi_wx_temp == "水" and ri_wx_temp == "火") or \
+                 (zhi_wx_temp == "火" and ri_wx_temp == "金"):
+                zhi_ss_temp = "官杀"
+            else:
+                zhi_ss_temp = "财星"
+
+            combined_ss = f"{gan_ss_temp} {zhi_ss_temp}"
+
+            if year == current_year:
+                bg = "#FFF3CD"
+                bold = "font-weight:bold;"
+            else:
+                bg = "transparent"
+                bold = ""
+
+            ganzhi_cells += f"<td style='text-align:center;padding:6px 8px;background:{bg};{bold}'>{ln_name_temp}</td>"
+            shishen_cells += f"<td style='text-align:center;padding:4px 6px;background:{bg};{bold};font-size:11px;color:#666;'>{combined_ss}</td>"
+
+        liunian_table = f"""
+        <style>
+        .liunian-table td {{ border:1px solid #eee; }}
+        </style>
+        <table class="liunian-table" style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:10px;">
+            <tr>{ganzhi_cells}</tr>
+            <tr>{shishen_cells}</tr>
+        </table>
+        """
+        st.markdown(liunian_table, unsafe_allow_html=True)
+
     st.info(f"**四柱**：{gans[0]}{zhis[0]} {gans[1]}{zhis[1]} {gans[2]}{zhis[2]} {gans[3]}{zhis[3]}　|　"
             f"**日主**：{gans[2]}　|　"
             f"**格局**：{geju}　|　"
             f"**用神**：{yong_str}　|　"
             f"**流年**：{ln_name}（{ln_shi_shen}）")
+
+    st.divider()
+    st.subheader("结构化数据（JSON）")
+    
+    st.json(json_data)
+
+    st.divider()
+    st.subheader("AI 解读")
+    if st.button("AI 分析"):
+        import json as json_module
+        prompt = f"""你是一个专业的八字命理分析助手。你的任务是根据用户提供的精确计算数据，进行客观、通俗的解读。
+
+请严格遵循以下原则：
+1. 所有分析必须基于下方提供的JSON数据，不得引入任何外部命理知识或流派断语。
+2. 不做任何超出数据范围的推测。
+3. 语言通俗易懂，让不懂八字的人也能理解。
+
+以下是经过精确计算的排盘数据：
+{json_module.dumps(json_data, ensure_ascii=False, indent=2)}
+
+请解读这份数据，包括：
+1. 日主五行和基本性格特征
+2. 格局的简单解释
+3. 用神和忌神在生活中代表什么
+4. 当前大运和流年的简要影响
+5. 一句话总结"""
+
+        with st.spinner("AI 分析中..."):
+            response = client.chat.completions.create(
+                model="deepseek-v4-flash",
+                messages=[{"role": "user", "content": prompt}],
+                stream=False
+            )
+        st.write(response.choices[0].message.content)
